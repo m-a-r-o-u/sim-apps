@@ -7,7 +7,7 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
-    "sim-api-wrapper",
+    "sim-api-wrapper @ git+https://github.com/m-a-r-o-u/sim-api-wrapper.git",
 ]
 
 [project.optional-dependencies]
