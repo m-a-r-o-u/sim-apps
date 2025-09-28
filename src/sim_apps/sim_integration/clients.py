@@ -43,11 +43,19 @@ class SIMClientAdapter:
             # instantiating so we gracefully support both layouts.
             client_factory = getattr(client_factory, "Client", client_factory)
 
-        if not callable(client_factory):
-            msg = "sim_api_wrapper.Client must be callable"
-            raise TypeError(msg)
+        if callable(client_factory):
+            client = client_factory(**kwargs)
+        else:
+            if kwargs:
+                msg = "sim_api_wrapper.Client is not callable and cannot accept keyword arguments"
+                raise TypeError(msg)
 
-        client = client_factory(**kwargs)
+            for attr in ("list_groups", "list_group_members", "get_user"):
+                if not hasattr(client_factory, attr):
+                    msg = "sim_api_wrapper.Client must be callable"
+                    raise TypeError(msg)
+
+            client = client_factory
         return cls(client=client)
 
     def list_groups(self, service: str) -> list[Group]:
