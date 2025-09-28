@@ -81,21 +81,21 @@ def _build_group_filters(args: argparse.Namespace) -> Sequence:
 
 
 def run_email_list(args: argparse.Namespace) -> int:
-    client = SIMClientAdapter.from_default()
-    pipeline = EmailListPipeline(
-        client=client,
-        service=args.service,
-        group_filters=_build_group_filters(args),
-        dedup_strategy=args.dedup,
-        institution=args.institution,
-        domain_hint=args.domain_hint,
-        output_path=args.output,
-        csv_path=args.csv,
-        emit_stdout=args.stdout,
-        debug_dir=args.debug_intermediate,
-        logger=logging.getLogger("sim_apps.email_list"),
-    )
-    context = pipeline.run(dry_run=args.dry_run)
+    with SIMClientAdapter.from_default() as client:
+        pipeline = EmailListPipeline(
+            client=client,
+            service=args.service,
+            group_filters=_build_group_filters(args),
+            dedup_strategy=args.dedup,
+            institution=args.institution,
+            domain_hint=args.domain_hint,
+            output_path=args.output,
+            csv_path=args.csv,
+            emit_stdout=args.stdout,
+            debug_dir=args.debug_intermediate,
+            logger=logging.getLogger("sim_apps.email_list"),
+        )
+        context = pipeline.run(dry_run=args.dry_run)
     preview = context.get("preview")
     if preview:
         print("Dry run preview:" if args.dry_run else "Result summary:")
