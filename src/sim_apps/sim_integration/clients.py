@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Any, Protocol
+from typing import Any, ClassVar, Iterable, Protocol
 
 from .models import Group, Member, User
 
@@ -27,36 +27,90 @@ class SIMClientAdapter:
     """Thin adapter that converts raw SIM client payloads into models."""
 
     client: SupportsSimClient
+    _CLIENT_FACTORY_ATTRS: ClassVar[tuple[str, ...]] = (
+        "Client",
+        "client",
+        "get_client",
+        "create_client",
+        "factory",
+    )
+    _REQUIRED_METHODS: ClassVar[tuple[str, ...]] = (
+        "list_groups",
+        "list_group_members",
+        "get_user",
+    )
 
     @classmethod
     def from_default(cls, **kwargs: Any) -> "SIMClientAdapter":
         """Instantiate the default client from :mod:`sim_api_wrapper`."""
 
         module = import_module("sim_api_wrapper")
-
-        try:
-            client_factory = getattr(module, "Client")
-        except AttributeError:
-            client_factory = getattr(module, "client")
-            # ``client`` may either be the factory itself or a module that
-            # exposes ``Client``.  Try to resolve the latter before
-            # instantiating so we gracefully support both layouts.
-            client_factory = getattr(client_factory, "Client", client_factory)
-
-        if callable(client_factory):
-            client = client_factory(**kwargs)
-        else:
-            if kwargs:
-                msg = "sim_api_wrapper.Client is not callable and cannot accept keyword arguments"
-                raise TypeError(msg)
-
-            for attr in ("list_groups", "list_group_members", "get_user"):
-                if not hasattr(client_factory, attr):
-                    msg = "sim_api_wrapper.Client must be callable"
-                    raise TypeError(msg)
-
-            client = client_factory
+        client = cls._resolve_client(module, kwargs)
         return cls(client=client)
+
+    @classmethod
+    def _resolve_client(cls, target: Any, kwargs: dict[str, Any]) -> SupportsSimClient:
+        """Resolve a SIM client instance from ``target``.
+
+        ``target`` may be the :mod:`sim_api_wrapper` module itself, a nested
+        object, or an already-instantiated client.  The method walks through a
+        list of common attribute names used by the wrapper to expose the client
+        factory and gracefully handles nested modules such as
+        ``sim_api_wrapper.client.Client``.
+        """
+
+        visited: set[int] = set()
+
+        def iter_candidates(obj: Any) -> Iterable[Any]:
+            for attr in cls._CLIENT_FACTORY_ATTRS:
+                try:
+                    candidate = getattr(obj, attr)
+                except AttributeError:
+                    continue
+                except Exception:  # pragma: no cover - defensive guard
+                    LOGGER.debug(
+                        "Skipping sim_api_wrapper candidate %s due to error", attr
+                    )
+                    continue
+                else:
+                    yield candidate
+
+        def resolve(obj: Any) -> SupportsSimClient | None:
+            identifier = id(obj)
+            if identifier in visited:
+                return None
+            visited.add(identifier)
+
+            if callable(obj):
+                client_instance = obj(**kwargs)
+            else:
+                if all(hasattr(obj, attr) for attr in cls._REQUIRED_METHODS):
+                    if kwargs:
+                        msg = "sim_api_wrapper.Client is not callable and cannot accept keyword arguments"
+                        raise TypeError(msg)
+                    client_instance = obj
+                else:
+                    for candidate in iter_candidates(obj):
+                        resolved = resolve(candidate)
+                        if resolved is not None:
+                            return resolved
+                    return None
+
+            for attr in cls._REQUIRED_METHODS:
+                if not hasattr(client_instance, attr):
+                    msg = f"Resolved sim_api_wrapper client is missing required method: {attr}"
+                    raise TypeError(msg)
+            return client_instance
+
+        client = resolve(target)
+        if client is None:
+            attr_list = ", ".join(cls._CLIENT_FACTORY_ATTRS)
+            msg = (
+                "Could not resolve a sim_api_wrapper client. Expected a callable factory or"
+                f" an object exposing {', '.join(cls._REQUIRED_METHODS)} (checked attributes: {attr_list})."
+            )
+            raise TypeError(msg)
+        return client
 
     def list_groups(self, service: str) -> list[Group]:
         LOGGER.debug("Listing groups for service %s", service)
