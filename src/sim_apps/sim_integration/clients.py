@@ -33,8 +33,21 @@ class SIMClientAdapter:
         """Instantiate the default client from :mod:`sim_api_wrapper`."""
 
         module = import_module("sim_api_wrapper")
-        client_cls = getattr(module, "Client")
-        client = client_cls(**kwargs)
+
+        try:
+            client_factory = getattr(module, "Client")
+        except AttributeError:
+            client_factory = getattr(module, "client")
+            # ``client`` may either be the factory itself or a module that
+            # exposes ``Client``.  Try to resolve the latter before
+            # instantiating so we gracefully support both layouts.
+            client_factory = getattr(client_factory, "Client", client_factory)
+
+        if not callable(client_factory):
+            msg = "sim_api_wrapper.Client must be callable"
+            raise TypeError(msg)
+
+        client = client_factory(**kwargs)
         return cls(client=client)
 
     def list_groups(self, service: str) -> list[Group]:
