@@ -15,6 +15,20 @@ class FakeSimClient:
     def list_group_members(self, group: str):
         return []
 
+    def get_group_members(self, group: str):
+        return []
+
+    def get_user(self, person_id: str):
+        return {"id": person_id}
+
+
+class OnlyGetGroupMembersClient:
+    def list_groups(self, service: str):
+        return []
+
+    def get_group_members(self, group: str):
+        return [{"personId": "p1", "groupId": group}]
+
     def get_user(self, person_id: str):
         return {"id": person_id}
 
@@ -28,3 +42,12 @@ def test_from_default_resolves_nested_factory(monkeypatch: pytest.MonkeyPatch) -
     adapter = SIMClientAdapter.from_default()
 
     assert isinstance(adapter.client, FakeSimClient)
+
+
+def test_adapter_uses_get_group_members_when_list_missing() -> None:
+    adapter = SIMClientAdapter(client=OnlyGetGroupMembersClient())
+
+    members = adapter.list_group_members("grp")
+
+    assert members[0].group_id == "grp"
+    assert members[0].person_id == "p1"

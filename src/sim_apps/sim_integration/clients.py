@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Any, ClassVar, Iterable, Protocol
+from typing import Any, ClassVar, ContextManager, Iterable, Protocol
 
 from .models import Group, Member, User
 
@@ -19,6 +19,8 @@ class SupportsSimClient(Protocol):
 
     def list_group_members(self, group: str) -> list[dict[str, Any]]: ...
 
+    def get_group_members(self, group: str) -> list[dict[str, Any]]: ...
+
     def get_user(self, person_id: str) -> dict[str, Any]: ...
 
 
@@ -27,6 +29,7 @@ class SIMClientAdapter:
     """Thin adapter that converts raw SIM client payloads into models."""
 
     client: SupportsSimClient
+    _context: ContextManager[SupportsSimClient] | None = None
     _CLIENT_FACTORY_ATTRS: ClassVar[tuple[str, ...]] = (
         "Client",
         "client",
@@ -36,8 +39,11 @@ class SIMClientAdapter:
     )
     _REQUIRED_METHODS: ClassVar[tuple[str, ...]] = (
         "list_groups",
-        "list_group_members",
         "get_user",
+    )
+    _GROUP_MEMBER_METHODS: ClassVar[tuple[str, ...]] = (
+        "list_group_members",
+        "get_group_members",
     )
 
     @classmethod
@@ -45,8 +51,28 @@ class SIMClientAdapter:
         """Instantiate the default client from :mod:`sim_api_wrapper`."""
 
         module = import_module("sim_api_wrapper")
+        sim_api_client = getattr(module, "SimApiClient", None)
+        if sim_api_client is not None:
+            context = sim_api_client(**kwargs)
+            client = context.__enter__()
+            cls._ensure_client(client)
+            return cls(client=client, _context=context)
         client = cls._resolve_client(module, kwargs)
         return cls(client=client)
+
+    def __enter__(self) -> "SIMClientAdapter":
+        return self
+
+    def __exit__(self, exc_type, exc, exc_tb) -> bool:
+        self.close(exc_type, exc, exc_tb)
+        return False
+
+    def close(self, exc_type=None, exc=None, exc_tb=None) -> None:
+        if self._context is not None:
+            try:
+                self._context.__exit__(exc_type, exc, exc_tb)
+            finally:
+                self._context = None
 
     @classmethod
     def _resolve_client(cls, target: Any, kwargs: dict[str, Any]) -> SupportsSimClient:
@@ -84,7 +110,7 @@ class SIMClientAdapter:
             if callable(obj):
                 client_instance = obj(**kwargs)
             else:
-                if all(hasattr(obj, attr) for attr in cls._REQUIRED_METHODS):
+                if cls._supports_required_methods(obj):
                     if kwargs:
                         msg = "sim_api_wrapper.Client is not callable and cannot accept keyword arguments"
                         raise TypeError(msg)
@@ -96,19 +122,34 @@ class SIMClientAdapter:
                             return resolved
                     return None
 
-            for attr in cls._REQUIRED_METHODS:
-                if not hasattr(client_instance, attr):
-                    msg = f"Resolved sim_api_wrapper client is missing required method: {attr}"
-                    raise TypeError(msg)
-            return client_instance
+            return cls._ensure_client(client_instance)
 
         client = resolve(target)
         if client is None:
             attr_list = ", ".join(cls._CLIENT_FACTORY_ATTRS)
             msg = (
                 "Could not resolve a sim_api_wrapper client. Expected a callable factory or"
-                f" an object exposing {', '.join(cls._REQUIRED_METHODS)} (checked attributes: {attr_list})."
+                f" an object exposing {', '.join(cls._REQUIRED_METHODS + cls._GROUP_MEMBER_METHODS)}"
+                f" (checked attributes: {attr_list})."
             )
+            raise TypeError(msg)
+        return client
+
+    @classmethod
+    def _supports_required_methods(cls, obj: Any) -> bool:
+        return all(hasattr(obj, attr) for attr in cls._REQUIRED_METHODS) and any(
+            hasattr(obj, attr) for attr in cls._GROUP_MEMBER_METHODS
+        )
+
+    @classmethod
+    def _ensure_client(cls, client: SupportsSimClient) -> SupportsSimClient:
+        for attr in cls._REQUIRED_METHODS:
+            if not hasattr(client, attr):
+                msg = f"Resolved sim_api_wrapper client is missing required method: {attr}"
+                raise TypeError(msg)
+        if not any(hasattr(client, attr) for attr in cls._GROUP_MEMBER_METHODS):
+            members = " or ".join(cls._GROUP_MEMBER_METHODS)
+            msg = f"Resolved sim_api_wrapper client is missing required group membership method ({members})"
             raise TypeError(msg)
         return client
 
@@ -126,7 +167,10 @@ class SIMClientAdapter:
     def list_group_members(self, group: Group | str) -> list[Member]:
         group_id = group.id if isinstance(group, Group) else str(group)
         LOGGER.debug("Listing members for group %s", group_id)
-        raw_members = self.client.list_group_members(group_id)
+        if hasattr(self.client, "list_group_members"):
+            raw_members = self.client.list_group_members(group_id)
+        else:
+            raw_members = self.client.get_group_members(group_id)
         members: list[Member] = []
         for raw in raw_members:
             try:

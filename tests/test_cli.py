@@ -18,6 +18,9 @@ class FakeSimClient:
             ]
         return []
 
+    def get_group_members(self, group: str):
+        return self.list_group_members(group)
+
     def get_user(self, person_id: str):
         return {
             "personId": person_id,
