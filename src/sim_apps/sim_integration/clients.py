@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Any, ClassVar, ContextManager, Iterable, Protocol
+from typing import Any, ClassVar, ContextManager, Iterable, Mapping, Protocol
 
 from .models import Group, Member, User
 
@@ -158,6 +158,12 @@ class SIMClientAdapter:
         raw_groups = self.client.list_groups(service)
         groups: list[Group] = []
         for raw in raw_groups:
+            if not isinstance(raw, Mapping):
+                LOGGER.warning(
+                    "Skipping group payload with unexpected type: %s",
+                    type(raw).__name__,
+                )
+                continue
             try:
                 groups.append(Group.from_raw(raw))
             except ValueError as exc:
