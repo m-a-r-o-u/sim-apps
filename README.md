@@ -11,15 +11,9 @@ Utilities and command line applications built on top of the [sim-api-wrapper](ht
 
 ## Installation
 
-The project uses [uv](https://github.com/astral-sh/uv) for dependency management. Install both the wrapper and sim-apps in editable mode:
+The project uses [uv](https://github.com/astral-sh/uv) for dependency management. The SIM API wrapper is installed automatically from its GitHub repository when you set up this project, so you only need to create an environment for `sim-apps`:
 
 ```bash
-# Install the SIM API wrapper
-cd /path/to/sim-api-wrapper
-uv venv
-uv pip install -e .
-
-# Install sim-apps
 cd /path/to/sim-apps
 uv venv
 uv pip install -e .[dev]
