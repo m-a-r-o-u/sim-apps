@@ -3,7 +3,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Mapping, MutableMapping, Sequence
+from typing import Iterable, Mapping, MutableMapping, Sequence, cast
+
+
+def _get_value(raw: Mapping[str, object] | object, *names: str, required: bool = False):
+    """Retrieve a value from ``raw`` supporting mappings and attribute access."""
+
+    is_mapping = isinstance(raw, Mapping)
+    for name in names:
+        if is_mapping:
+            mapping = cast(Mapping[str, object], raw)
+            if name in mapping:
+                return mapping[name]
+        else:
+            if hasattr(raw, name):
+                return getattr(raw, name)
+    if required:
+        raise KeyError(names[0])
+    return None
 
 
 @dataclass(slots=True)
@@ -15,13 +32,17 @@ class Group:
     display_name: str | None = None
 
     @classmethod
-    def from_raw(cls, raw: Mapping[str, object]) -> "Group":
+    def from_raw(cls, raw: Mapping[str, object] | object) -> "Group":
         try:
-            identifier = str(raw["id"])
-            name = str(raw.get("name", raw.get("groupName", identifier)))
+            identifier = str(_get_value(raw, "id", required=True))
         except KeyError as exc:  # pragma: no cover - defensive guard
             raise ValueError("SIM group payload missing required fields") from exc
-        display_name = raw.get("displayName")
+        raw_name = _get_value(raw, "name", "groupName")
+        if isinstance(raw_name, str):
+            name = raw_name
+        else:
+            name = identifier
+        display_name = _get_value(raw, "displayName", "display_name")
         if display_name is not None:
             display_name = str(display_name)
         return cls(id=identifier, name=name, display_name=display_name)
@@ -38,14 +59,14 @@ class Member:
     display_name: str | None = None
 
     @classmethod
-    def from_raw(cls, raw: Mapping[str, object], group_id: str) -> "Member":
+    def from_raw(cls, raw: Mapping[str, object] | object, group_id: str) -> "Member":
         try:
-            person_id = str(raw["personId"])
+            person_id = str(_get_value(raw, "personId", "person_id", required=True))
         except KeyError as exc:  # pragma: no cover - defensive guard
             raise ValueError("SIM member payload missing personId") from exc
-        primary_email = raw.get("primaryEmail")
+        primary_email = _get_value(raw, "primaryEmail", "primary_email")
         emails: Sequence[str]
-        raw_emails = raw.get("emails")
+        raw_emails = _get_value(raw, "emails")
         if isinstance(raw_emails, Iterable):
             emails = tuple(str(email) for email in raw_emails)
         else:
@@ -54,7 +75,7 @@ class Member:
             primary_email = primary_email
         else:
             primary_email = None
-        display_name = raw.get("displayName")
+        display_name = _get_value(raw, "displayName", "display_name")
         if isinstance(display_name, str):
             display_name = display_name
         else:
@@ -79,16 +100,16 @@ class User:
     emails: Sequence[str] = field(default_factory=tuple)
 
     @classmethod
-    def from_raw(cls, raw: Mapping[str, object]) -> "User":
+    def from_raw(cls, raw: Mapping[str, object] | object) -> "User":
         try:
-            person_id = str(raw["personId"])
+            person_id = str(_get_value(raw, "personId", "person_id", required=True))
         except KeyError as exc:  # pragma: no cover - defensive guard
             raise ValueError("SIM user payload missing personId") from exc
-        first_name = raw.get("firstName")
-        last_name = raw.get("lastName")
-        display_name = raw.get("displayName")
+        first_name = _get_value(raw, "firstName", "first_name")
+        last_name = _get_value(raw, "lastName", "last_name")
+        display_name = _get_value(raw, "displayName", "display_name")
         emails: Sequence[str]
-        raw_emails = raw.get("emails")
+        raw_emails = _get_value(raw, "emails")
         if isinstance(raw_emails, Iterable):
             emails = tuple(str(email) for email in raw_emails)
         else:
