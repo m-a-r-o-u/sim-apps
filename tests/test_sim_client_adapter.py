@@ -35,7 +35,7 @@ class OnlyGetGroupMembersClient:
 
 class NonMappingGroupClient:
     def list_groups(self, service: str):
-        return ["bad", {"id": "good", "name": "Good"}]
+        return [123, {"id": "good", "name": "Good"}]
 
     def list_group_members(self, group: str):
         return []
@@ -75,3 +75,27 @@ def test_adapter_skips_non_mapping_group_payloads(caplog: pytest.LogCaptureFixtu
 
     assert [group.id for group in groups] == ["good"]
     assert "Skipping group payload with unexpected type" in caplog.text
+
+
+class StringGroupClient:
+    def list_groups(self, service: str):
+        return ["proj-ai-c", '{"id": "proj", "name": "Project"}']
+
+    def list_group_members(self, group: str):
+        return []
+
+    def get_group_members(self, group: str):
+        return []
+
+    def get_user(self, person_id: str):
+        return {"id": person_id}
+
+
+def test_adapter_coerces_string_group_payloads(caplog: pytest.LogCaptureFixture) -> None:
+    adapter = SIMClientAdapter(client=StringGroupClient())
+
+    with caplog.at_level("WARNING"):
+        groups = adapter.list_groups("svc")
+
+    assert [group.id for group in groups] == ["proj-ai-c", "proj"]
+    assert "Skipping empty group payload string" not in caplog.text
