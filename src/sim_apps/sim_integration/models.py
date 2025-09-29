@@ -61,7 +61,18 @@ class Member:
     @classmethod
     def from_raw(cls, raw: Mapping[str, object] | object, group_id: str) -> "Member":
         try:
-            person_id = str(_get_value(raw, "personId", "person_id", required=True))
+            person_id = str(
+                _get_value(
+                    raw,
+                    "personId",
+                    "person_id",
+                    "kennung",
+                    "kennungId",
+                    "kennung_id",
+                    "uid",
+                    required=True,
+                )
+            )
         except KeyError as exc:  # pragma: no cover - defensive guard
             raise ValueError("SIM member payload missing personId") from exc
         primary_email = _get_value(raw, "primaryEmail", "primary_email")
@@ -102,24 +113,56 @@ class User:
     @classmethod
     def from_raw(cls, raw: Mapping[str, object] | object) -> "User":
         try:
-            person_id = str(_get_value(raw, "personId", "person_id", required=True))
+            person_id = str(
+                _get_value(
+                    raw,
+                    "personId",
+                    "person_id",
+                    "kennung",
+                    "kennungId",
+                    "kennung_id",
+                    "uid",
+                    required=True,
+                )
+            )
         except KeyError as exc:  # pragma: no cover - defensive guard
             raise ValueError("SIM user payload missing personId") from exc
         first_name = _get_value(raw, "firstName", "first_name")
         last_name = _get_value(raw, "lastName", "last_name")
         display_name = _get_value(raw, "displayName", "display_name")
-        emails: Sequence[str]
+        emails: list[str] = []
         raw_emails = _get_value(raw, "emails")
         if isinstance(raw_emails, Iterable):
-            emails = tuple(str(email) for email in raw_emails)
-        else:
-            emails = tuple()
+            emails.extend(str(email) for email in raw_emails)
+        data = _get_value(raw, "data", "daten")
+        if isinstance(data, Mapping):
+            if not isinstance(first_name, str):
+                first_name = _get_value(data, "firstName", "first_name", "vorname")
+            if not isinstance(last_name, str):
+                last_name = _get_value(data, "lastName", "last_name", "nachname")
+            if not isinstance(display_name, str):
+                display_name = _get_value(data, "displayName", "display_name", "anrede")
+            raw_data_emails = _get_value(
+                data,
+                "emailAddresses",
+                "email_addresses",
+                "emailadressen",
+            )
+            if isinstance(raw_data_emails, Iterable):
+                for entry in raw_data_emails:
+                    if isinstance(entry, Mapping):
+                        address = _get_value(entry, "email", "adresse", "address")
+                        if isinstance(address, str):
+                            emails.append(address)
+                    elif isinstance(entry, str):
+                        emails.append(entry)
+        emails_tuple: Sequence[str] = tuple(dict.fromkeys(emails)) if emails else tuple()
         return cls(
             person_id=person_id,
             display_name=str(display_name) if isinstance(display_name, str) else None,
             first_name=str(first_name) if isinstance(first_name, str) else None,
             last_name=str(last_name) if isinstance(last_name, str) else None,
-            emails=emails,
+            emails=emails_tuple,
         )
 
 
