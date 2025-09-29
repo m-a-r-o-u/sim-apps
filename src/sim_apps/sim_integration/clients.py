@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from importlib import import_module
@@ -158,17 +159,37 @@ class SIMClientAdapter:
         raw_groups = self.client.list_groups(service)
         groups: list[Group] = []
         for raw in raw_groups:
-            if not isinstance(raw, Mapping):
+            if isinstance(raw, Mapping):
+                mapping: Mapping[str, object] | None = raw
+            elif isinstance(raw, str):
+                mapping = self._coerce_group_string(raw)
+                if mapping is None:
+                    LOGGER.warning("Skipping empty group payload string")
+                    continue
+            else:
                 LOGGER.warning(
                     "Skipping group payload with unexpected type: %s",
                     type(raw).__name__,
                 )
                 continue
             try:
-                groups.append(Group.from_raw(raw))
+                groups.append(Group.from_raw(mapping))
             except ValueError as exc:
                 LOGGER.warning("Skipping malformed group payload: %s", exc)
         return groups
+
+    @staticmethod
+    def _coerce_group_string(raw: str) -> Mapping[str, object] | None:
+        payload = raw.strip()
+        if not payload:
+            return None
+        try:
+            decoded = json.loads(payload)
+        except ValueError:
+            decoded = None
+        if isinstance(decoded, Mapping):
+            return decoded
+        return {"id": payload, "name": payload}
 
     def list_group_members(self, group: Group | str) -> list[Member]:
         group_id = group.id if isinstance(group, Group) else str(group)
