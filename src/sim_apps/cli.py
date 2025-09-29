@@ -9,7 +9,6 @@ from typing import Sequence
 
 from .filters.group_filters import (
     only_ai_c_groups,
-    only_ai_h_mcml_groups,
     only_project_groups,
     with_ai_c_but_without_ai_h_mcml,
     with_ai_c_companion,
@@ -38,7 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     email_parser.add_argument("--with-ai-h-mcml", action="store_true")
     email_parser.add_argument("--with-ai-c-but-without-ai-h-mcml", action="store_true")
     email_parser.add_argument("--only-ai-c", action="store_true")
-    email_parser.add_argument("--only-ai-h-mcml", action="store_true")
+    email_parser.add_argument("--minimal-run", action="store_true", help="Process only a small subset for debugging")
+    email_parser.add_argument("--unique-emails", action="store_true", help="Ensure the final email list contains unique addresses")
     email_parser.add_argument(
         "--dedup",
         choices=["none", "by-id", "by-primary-email", "by-best-email"],
@@ -75,8 +75,6 @@ def _build_group_filters(args: argparse.Namespace) -> Sequence:
         filters.append(with_ai_c_but_without_ai_h_mcml())
     if args.only_ai_c:
         filters.append(only_ai_c_groups())
-    if args.only_ai_h_mcml:
-        filters.append(only_ai_h_mcml_groups())
     return filters
 
 
@@ -92,6 +90,8 @@ def run_email_list(args: argparse.Namespace) -> int:
             output_path=args.output,
             csv_path=args.csv,
             emit_stdout=args.stdout,
+            minimal_run=args.minimal_run,
+            unique_emails=args.unique_emails,
             debug_dir=args.debug_intermediate,
             logger=logging.getLogger("sim_apps.email_list"),
         )
@@ -100,6 +100,9 @@ def run_email_list(args: argparse.Namespace) -> int:
     if preview:
         print("Dry run preview:" if args.dry_run else "Result summary:")
         print(f"  Groups before filters: {preview['groups_before']}")
+        processed = preview.get("groups_processed")
+        if processed is not None:
+            print(f"  Groups processed: {processed}")
         print(f"  Groups after filters: {preview['groups_after']}")
         print(f"  Unique members: {preview['unique_members']}")
         sample = preview.get("sample", [])

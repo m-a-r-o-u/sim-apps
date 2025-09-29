@@ -25,3 +25,12 @@ sim-apps email-list --service AI --project-groups-only --dedup by-best-email --c
 ```
 
 Generates a CSV file containing group name, person ID, display name, selected email, all candidates, and selection reason.
+
+## Debug a minimal subset with unique emails
+
+```
+sim-apps email-list --service AI --minimal-run --with-ai-c --unique-emails --dry-run
+```
+
+Limits processing to the first few groups and members while printing detailed logs for each step. Duplicate email addresses are
+collapsed into a single entry in the final list, making it easier to inspect the selection logic during troubleshooting.
