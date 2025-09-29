@@ -200,11 +200,37 @@ class SIMClientAdapter:
             raw_members = self.client.get_group_members(group_id)
         members: list[Member] = []
         for raw in raw_members:
+            if isinstance(raw, Mapping):
+                mapping: Mapping[str, object] | None = raw
+            elif isinstance(raw, str):
+                mapping = self._coerce_member_string(raw)
+                if mapping is None:
+                    LOGGER.warning("Skipping empty member payload string")
+                    continue
+            else:
+                LOGGER.warning(
+                    "Skipping member payload with unexpected type: %s",
+                    type(raw).__name__,
+                )
+                continue
             try:
-                members.append(Member.from_raw(raw, group_id=group_id))
+                members.append(Member.from_raw(mapping, group_id=group_id))
             except ValueError as exc:
                 LOGGER.warning("Skipping malformed member payload: %s", exc)
         return members
+
+    @staticmethod
+    def _coerce_member_string(raw: str) -> Mapping[str, object] | None:
+        payload = raw.strip()
+        if not payload:
+            return None
+        try:
+            decoded = json.loads(payload)
+        except ValueError:
+            decoded = None
+        if isinstance(decoded, Mapping):
+            return decoded
+        return {"personId": payload}
 
     def get_user(self, person_id: str) -> User:
         LOGGER.debug("Fetching user %s", person_id)
