@@ -41,7 +41,7 @@ sim-apps email-list --help
 ```bash
 sim-apps email-list --service AI --project-groups-only --with-ai-c --stdout
 sim-apps email-list --service AI --with-ai-c-but-without-ai-h-mcml --dry-run
-sim-apps email-list --service AI --only-ai-h-mcml --dedup by-id --output emails.txt
+sim-apps email-list --service AI --minimal-run --with-ai-c --unique-emails --dedup by-id --output emails.txt
 sim-apps email-list --service AI --institution institution --domain-hint institution.de --csv emails.csv
 sim-apps email-list --service AI --project-groups-only --dedup by-best-email --dry-run --debug-intermediate debug/
 ```
@@ -52,9 +52,12 @@ Dry runs still perform API calls but skip file writes and print a preview:
 - Unique member count after deduplication
 - Sample of selected emails
 
-### Logging
+### Logging and debugging
 
-Control verbosity with `--log-level`. Use `--log-level DEBUG` for detailed step-level information.
+Control verbosity with `--log-level`. The email list pipeline now emits structured summaries for every step, including the
+projects returned by the SIM API, how filters affect the project list, which members are loaded per project, user lookups, and
+the chosen email candidates. Combine the detailed logs with `--minimal-run` to limit processing to a small subset while
+debugging complex scenarios.
 
 ## Development
 

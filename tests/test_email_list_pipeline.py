@@ -61,3 +61,50 @@ def test_email_list_pipeline(tmp_path: Path) -> None:
     assert result.preview["unique_members"] == 2
     emails = output_path.read_text().split("; ")
     assert any(email.endswith("@institution.de") for email in emails)
+
+
+class DuplicateEmailClient:
+    def list_groups(self, service: str):
+        assert service == "AI"
+        return [
+            {"id": "1", "name": "alpha"},
+        ]
+
+    def list_group_members(self, group: str):
+        return [
+            {"personId": "p1", "primaryEmail": "dup@example.com", "emails": ["dup@example.com"]},
+            {"personId": "p2", "primaryEmail": "dup@example.com", "emails": ["dup@example.com"]},
+        ]
+
+    def get_group_members(self, group: str):
+        return self.list_group_members(group)
+
+    def get_user(self, person_id: str):
+        return {
+            "personId": person_id,
+            "firstName": "Test",
+            "lastName": "User",
+            "emails": ["dup@example.com"],
+        }
+
+
+def test_email_list_pipeline_unique_emails(tmp_path: Path) -> None:
+    client = SIMClientAdapter(client=DuplicateEmailClient())
+    output_path = tmp_path / "emails.txt"
+    pipeline = EmailListPipeline(
+        client=client,
+        service="AI",
+        group_filters=[only_project_groups()],
+        dedup_strategy="none",
+        institution=None,
+        domain_hint=None,
+        output_path=output_path,
+        csv_path=None,
+        emit_stdout=False,
+        unique_emails=True,
+    )
+    context = pipeline.run(dry_run=False)
+    assert output_path.exists()
+    email_list = output_path.read_text()
+    assert email_list == "dup@example.com"
+    assert context["email_list"] == "dup@example.com"
